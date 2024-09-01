@@ -1,0 +1,49 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main  # Specify the branch to trigger the workflow
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2  # Checkout the code from the repository
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'  # Use Node.js version 14
+
+    - name: Install dependencies
+      run: npm install
+      working-directory: frontend  # Install frontend dependencies
+
+    - name: Build frontend
+      run: npm run build
+      working-directory: frontend  # Build the frontend
+
+    - name: Set up AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Log in to Amazon ECR
+      id: ecr-login
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push backend Docker image to ECR
+      run: |
+        docker build -t booklynx-backend ./backend
+        docker tag booklynx-backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/booklynx-backend:latest
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/booklynx-backend:latest
+
+    - name: Deploy frontend to S3 and CloudFront
+      run: |
+        aws s3 sync ./frontend/dist s3://your-s3-bucket-name --delete
+        aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
